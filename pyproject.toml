@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "django-agentic"
+version = "0.3.0"
+description = "AI framework for Django — LangGraph + LangChain. Entity-aware agents, credit management, usage logging, prompt caching, HITL."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    {name = "Opportunote", email = "hello@opportunote.com"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 4.2",
+    "Framework :: Django :: 5.0",
+    "Framework :: Django :: 5.1",
+    "Framework :: Django :: 6.0",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "django>=4.2",
+    "djangorestframework>=3.14",
+    "langchain>=0.3",
+    "langchain-core>=0.3",
+    "langgraph>=1.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+anthropic = ["langchain-anthropic>=0.3"]
+openai = ["langchain-openai>=0.3"]
+postgres = ["langgraph-checkpoint-postgres>=2.0"]
+redis = ["langgraph-checkpoint-redis>=1.0"]
+sqlite = ["langgraph-checkpoint-sqlite>=1.0"]
+
+[project.urls]
+Homepage = "https://github.com/Opportunote/django-agentic"
+Documentation = "https://github.com/Opportunote/django-agentic#readme"
+Repository = "https://github.com/Opportunote/django-agentic"
+Changelog = "https://github.com/Opportunote/django-agentic/releases"
+
+[tool.setuptools.packages.find]
+include = ["django_agentic*"]
