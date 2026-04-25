@@ -24,10 +24,11 @@ class AIModel(models.Model):
     name = models.CharField(max_length=100, unique=True)
     display_name = models.CharField(max_length=200, blank=True, default="")
     model_type = models.CharField(max_length=20, choices=MODEL_TYPES, default="chat", db_index=True)
-    provider = models.CharField(max_length=50, choices=[
-        ("anthropic", "Anthropic"), ("openai", "OpenAI"),
-        ("google", "Google"), ("bedrock", "AWS Bedrock"),
-    ], default="anthropic")
+    provider = models.CharField(
+        max_length=50, default="anthropic", db_index=True,
+        help_text="Provider name (must match a registered provider in providers.py). "
+                  "Built-in: anthropic, openai. Custom providers registered via register_provider().",
+    )
     input_cost_per_1m = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     output_cost_per_1m = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     cache_write_cost_per_1m = models.DecimalField(max_digits=10, decimal_places=6, default=0)
@@ -189,7 +190,7 @@ class AIUsageLog(models.Model):
         if not self.ai_model_id and self.model_name:
             self.ai_model = AIModel.objects.filter(name=self.model_name, active=True).first()
         if self.ai_model:
-            if not self.cost_usd:
+            if self.cost_usd is None:
                 self.cost_usd = self.ai_model.calculate_cost({
                     "input_tokens": self.prompt_tokens or 0,
                     "output_tokens": self.completion_tokens or 0,

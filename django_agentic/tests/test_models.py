@@ -131,3 +131,15 @@ class AIUsageLogTest(TestCase):
         log.save()
         self.assertEqual(log.input_cost_per_1m_at_time, Decimal("2.00"))
         self.assertEqual(log.output_cost_per_1m_at_time, Decimal("8.00"))
+
+
+    def test_explicit_zero_cost_not_overwritten(self):
+        """Regression: Decimal('0') is falsy — explicit cost_usd=0 must not be recalculated."""
+        log = AIUsageLog(
+            model_name="log-test-model", workflow="test", node="test",
+            prompt_tokens=1_000_000, completion_tokens=1_000_000,
+            cost_usd=Decimal("0"),  # Explicitly set to zero (e.g. staff user)
+        )
+        log.save()
+        # Should NOT be overwritten by calculate_cost (which would give 10.0)
+        self.assertEqual(log.cost_usd, Decimal("0"))

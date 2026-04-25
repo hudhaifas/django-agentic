@@ -80,6 +80,24 @@ class AIModelAdmin(admin.ModelAdmin):
     list_display = ("display_name", "name", "model_type", "provider", "input_cost_per_1m", "output_cost_per_1m",
                     "allowed_for_free", "allowed_for_paid", "active", "total_cost_30d")
     list_filter = ("model_type", "provider", "active", "allowed_for_free", "allowed_for_paid")
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == "provider":
+            from django_agentic.providers import get_registered_providers
+            field = super().formfield_for_dbfield(db_field, request, **kwargs)
+            field.help_text = f"Registered: {', '.join(get_registered_providers())}"
+            return field
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == "provider":
+            from django_agentic.providers import get_registered_providers
+            providers = get_registered_providers()
+            kwargs["widget"] = admin.widgets.AdminTextInputWidget()
+            field = super().formfield_for_dbfield(db_field, request, **kwargs)
+            field.help_text = f"Registered providers: {', '.join(providers)}"
+            return field
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
     list_editable = ("allowed_for_free", "allowed_for_paid", "active")
     readonly_fields = ("usage_charts",)
 

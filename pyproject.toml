@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-agentic"
-version = "0.3.0"
+version = "0.4.0"
 description = "AI framework for Django — LangGraph + LangChain. Entity-aware agents, credit management, usage logging, prompt caching, HITL."
 readme = "README.md"
 license = "MIT"
@@ -38,16 +38,17 @@ dependencies = [
 
 [project.optional-dependencies]
 anthropic = ["langchain-anthropic>=0.3"]
-openai = ["langchain-openai>=0.3"]
+openai = ["langchain-openai>=0.3", "openai>=1.0"]
 postgres = ["langgraph-checkpoint-postgres>=2.0"]
 redis = ["langgraph-checkpoint-redis>=1.0"]
 sqlite = ["langgraph-checkpoint-sqlite>=1.0"]
+transcription = ["openai>=1.0"]
 
 [project.urls]
-Homepage = "https://github.com/Opportunote/django-agentic"
-Documentation = "https://github.com/Opportunote/django-agentic#readme"
-Repository = "https://github.com/Opportunote/django-agentic"
-Changelog = "https://github.com/Opportunote/django-agentic/releases"
+Homepage = "https://github.com/hudhaifas/django-agentic"
+Documentation = "https://github.com/hudhaifas/django-agentic#readme"
+Repository = "https://github.com/hudhaifas/django-agentic"
+Changelog = "https://github.com/hudhaifas/django-agentic/releases"
 
 [tool.setuptools.packages.find]
 include = ["django_agentic*"]

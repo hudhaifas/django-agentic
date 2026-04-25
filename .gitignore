@@ -9,3 +9,4 @@ build/
 .venv/
 *.db
 .DS_Store
+.idea

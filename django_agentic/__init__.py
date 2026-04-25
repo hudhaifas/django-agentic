@@ -41,4 +41,4 @@ For SQLite (local dev with persistence across restarts):
         "CHECKPOINTER": SqliteSaver(sqlite3.connect("checkpoints.db", check_same_thread=False)),
     }
 """
-__version__ = "0.3.0"
+__version__ = "0.4.0"

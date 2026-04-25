@@ -6,9 +6,9 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from django_agentic.models import AIModel, SiteAIConfig
 from django_agentic.context import current_ai_user, current_ai_model_name
-from django_agentic.service import (
-    ai_context, AgentResponse, _normalize_content,
-    _build_system_message, _classify_error,
+from django_agentic.service import ai_context, _classify_error
+from django_agentic.chat import (
+    AgentResponse, _normalize_content, build_system_message,
     _extract_chat_history,
 )
 
@@ -104,10 +104,10 @@ class NormalizeContentTest(TestCase):
 class BuildSystemMessageTest(TestCase):
 
     def test_static_only(self):
-        self.assertEqual(_build_system_message("hello"), "hello")
+        self.assertEqual(build_system_message("hello"), "hello")
 
     def test_with_dynamic(self):
-        result = _build_system_message("static", "dynamic")
+        result = build_system_message("static", "dynamic")
         self.assertEqual(result, "static\n\ndynamic")
 
 

@@ -1,7 +1,11 @@
 # django-agentic
 
 AI framework for Django: entity-aware chatbot agents with tools, human-in-the-loop approval,
-credit management, and usage logging. Built on LangGraph + LangChain.
+credit management, usage logging, and audio transcription. Built on LangGraph + LangChain.
+
+Supports multiple AI providers (Anthropic, OpenAI, and any custom provider) through an
+extensible registry. All calls — LLM, transcription, or custom — go through the same
+credit-check and usage-logging pipeline.
 
 ```bash
 pip install django-agentic[anthropic]
@@ -18,11 +22,14 @@ pip install django-agentic[anthropic]
   `HumanInTheLoopMiddleware`; read tools execute immediately
 - **Prompt caching** — automatic via `AnthropicPromptCachingMiddleware` (up to 90% cost
   reduction on repeated requests)
-- **Multi-provider** — OpenAI and Anthropic, selected per-user based on credit tier
+- **Provider registry** — OpenAI and Anthropic built-in; add Google, Bedrock, or any
+  provider with `register_provider()` in your `AppConfig.ready()`
+- **Audio transcription** — `ai_service.transcribe()` handles chunking, Whisper API,
+  duration-based cost tracking, and credit deduction
 - **Credit system** — free monthly credits + purchased credits per user, with automatic
   model tier selection (paid model when credits allow, free model as fallback)
-- **Usage logging** — every LLM call logged with token counts, cost, cache metrics, and
-  credit deductions
+- **Usage logging** — every AI call logged with token counts, cost, cache metrics, and
+  credit deductions. Non-token models (Whisper) use duration-based cost
 - **Structured invocation** — `ai_service.invoke()` for workflow nodes that need structured
   Pydantic output (extraction, classification, generation)
 - **Configurable checkpointer** — InMemorySaver by default, swap to PostgresSaver or
@@ -31,28 +38,37 @@ pip install django-agentic[anthropic]
 
 ---
 
-## How it works
+## Architecture
+
+```
+django_agentic/
+  providers.py   — Provider registry (register_provider, create_chat_model, create_transcription_client)
+  service.py     — AIService facade (invoke, chat, resume, transcribe, log_usage)
+  chat.py        — Agent chat/resume (LangGraph agents, HITL, conversation history)
+  credits.py     — Credit system (resolve_model_for_user, deduct_credits)
+  context.py     — Context vars (current_ai_user, current_ai_model_name)
+  agent.py       — Agent base class + registry (ModelAgent, AgentRegistry)
+  models.py      — Django models (AIModel, AIUsageLog, SiteAIConfig, UserAIProfile)
+  views.py       — REST API endpoints
+  admin.py       — Django admin with usage charts
+```
+
+**Data flow:**
 
 ```
 Browser -> POST /api/agentic/agent/chat
             |
        agent_chat view (DRF)
             |
-       AIService.chat()  <-> resolve_model_for_user (credit check + model selection)
+       AIService.chat()  <-> resolve_model_for_user (credit check)
             |
        AgentRegistry  ->  YourCustomAgent (extends ModelAgent)
             |
+       providers.create_chat_model()  ->  registered factory (Anthropic / OpenAI / custom)
+            |
        create_agent()  <-> HumanInTheLoopMiddleware + AnthropicPromptCachingMiddleware
             |
-       LLM  <->  OpenAI / Anthropic
-            |
-       [write tool called]
-            |
-       HumanInTheLoopMiddleware -> interrupt -> returns actions to browser
-            |
-       User approves/rejects in UI
-            |
-       POST /api/agentic/agent/resume -> Command(resume=decisions) -> tool executes -> LLM responds
+       LLM call  ->  _record_usage()  ->  deduct_credits()  ->  AIUsageLog
 ```
 
 ---
@@ -79,6 +95,7 @@ INSTALLED_APPS = [
 DJANGO_AGENTIC = {
     "DEFAULT_MODEL": "claude-sonnet-4-20250514",
     "ANTHROPIC_API_KEY": "sk-ant-...",
+    "OPENAI_API_KEY": "sk-...",  # needed for Whisper transcription
 }
 ```
 
@@ -97,9 +114,8 @@ urlpatterns = [
 python manage.py migrate
 ```
 
-This creates the tables and seeds 9 default AI models (GPT-4.1 family + Claude family)
-with current pricing. Go to Django admin > AI Configuration to pick your free-tier and
-paid-tier defaults.
+This creates the tables and seeds default AI models with current pricing.
+Go to Django admin > AI Configuration to pick your free-tier and paid-tier defaults.
 
 ---
 
@@ -116,34 +132,21 @@ class ProductAgent(ModelAgent):
 
     def get_static_instructions(self) -> str:
         """Cacheable system prompt. Cached by Anthropic for 5 min."""
-        return (
-            "You are a product assistant. Use tools to read and update data. "
-            "Write tools require user approval -- call them immediately, "
-            "the system handles confirmation."
-        )
+        return "You are a product assistant. Use tools to read and update data."
 
     def get_dynamic_context(self) -> str:
-        """Ephemeral context -- entity state, rebuilt per request."""
+        """Ephemeral context — entity state, rebuilt per request."""
         p = self.entity
-        return f"Product: {p.name} (ID: {p.pk})\nPrice: {p.price}\nStock: {p.stock}"
+        return f"Product: {p.name} (ID: {p.pk})\nPrice: {p.price}"
 
     def get_tools(self) -> list:
-        """Tools the LLM can call. Passed to create_agent which binds them
-        to the LLM automatically -- no need to describe them in the prompt."""
-        return [get_product_details, update_price, delete_product]
+        return [get_product_details, update_price]
 
     def get_tools_requiring_approval(self) -> list[str]:
-        """Tool names that trigger HITL interrupt before execution."""
-        return ["update_price", "delete_product"]
-
-    def summarise_action(self, tool_name: str, tool_input: dict) -> str:
-        """Human-readable summary for the HITL confirmation card."""
-        if tool_name == "update_price":
-            return f"Update price to ${tool_input.get('new_price', '?')}"
-        return f"Execute: {tool_name}"
+        return ["update_price"]
 ```
 
-Register the mapping in settings:
+Register in settings:
 
 ```python
 DJANGO_AGENTIC = {
@@ -155,55 +158,55 @@ DJANGO_AGENTIC = {
 
 ---
 
-## Creating tools
+## Provider registry
 
-Tools are plain Python functions decorated with `@tool` from `langchain_core.tools`.
-The consuming app imports only `@tool` -- no other langchain imports needed.
-
-**Read tool** (runs immediately, no approval):
+Built-in providers (anthropic, openai) are registered at import time. Add custom
+providers in your `AppConfig.ready()`:
 
 ```python
-from langchain_core.tools import tool
-import json
+# myapp/apps.py
+from django.apps import AppConfig
 
-@tool
-def get_product_details(product_id: str) -> str:
-    """Get full details of a product."""
-    from myapp.models import Product
-    p = Product.objects.get(pk=product_id)
-    return json.dumps({"name": p.name, "price": str(p.price), "stock": p.stock})
+class MyAppConfig(AppConfig):
+    def ready(self):
+        from django_agentic.providers import register_provider
+
+        def google_factory(model_name, api_key, **kwargs):
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            return ChatGoogleGenerativeAI(model=model_name, api_key=api_key, **kwargs)
+
+        register_provider("google", google_factory)
 ```
 
-**Write tool** (requires HITL approval):
-
-```python
-@tool
-def update_price(product_id: str, new_price: float) -> str:
-    """Update the price of a product."""
-    from myapp.models import Product
-    p = Product.objects.get(pk=product_id)
-    old = p.price
-    p.price = new_price
-    p.save(update_fields=["price"])
-    return json.dumps({"success": True, "old_price": str(old), "new_price": str(new_price)})
-```
-
-Tools listed in `get_tools_requiring_approval()` are gated by `HumanInTheLoopMiddleware`.
-Read tools not in the approval list execute immediately.
+Then create an AIModel record in admin with `provider="google"` and it just works.
 
 ---
 
-## Human-in-the-Loop (HITL)
+## Audio transcription
 
-HITL is driven by LangChain's `HumanInTheLoopMiddleware` -- no custom interrupt code needed.
+`ai_service.transcribe()` handles the full Whisper pipeline: chunking files >25MB,
+calling the OpenAI API, calculating cost from audio duration ($0.006/min), deducting
+credits, and logging usage — all through the same pipeline as LLM calls.
 
-When the LLM calls a write tool, the middleware pauses execution and returns the pending
-actions to the frontend. The frontend shows a confirmation card. The user approves or
-rejects. A POST to `/ai/agent/resume` continues the workflow using
-`Command(resume={"decisions": [{"type": "approve"}]})`.
+```python
+from django_agentic.service import ai_service
 
-If the user refreshes the page during an interrupt, the next chat message auto-rejects
-the stale interrupt before processing the new message.
+transcript = ai_service.transcribe(
+    file_path="/tmp/interview.m4a",
+    workflow="my_workflow",
+    node="transcribe",
+    file_name="interview.m4a",
+    user=request.user,
+)
+```
+
+Custom transcription providers (e.g. Deepgram) can be registered:
+
+```python
+from django_agentic.providers import register_transcription_provider
+
+register_transcription_provider("deepgram", my_deepgram_factory)
+```
 
 ---
 
@@ -226,7 +229,6 @@ result = ai_service.invoke(
     workflow="reviews",
     node="analyze",
 )
-# result is a ProductAnalysis instance
 ```
 
 Every `invoke()` call is automatically logged, costed, and credit-deducted.
@@ -235,28 +237,20 @@ Every `invoke()` call is automatically logged, costed, and credit-deducted.
 
 ## Running workflows (ai_context)
 
-When running a LangGraph workflow that calls `ai_service.invoke()` internally, use
-`ai_context` to handle credit pre-check, model selection, and context var setup:
+When running a LangGraph workflow that calls `ai_service.invoke()` internally:
 
 ```python
 from django_agentic.service import ai_context
 
 with ai_context(user) as ctx:
     # ctx.model_name, ctx.model, ctx.is_free_tier available
-    # context vars (current_ai_user, current_ai_model_name) are set
     my_workflow.invoke({"input": data})
 # context vars auto-reset on exit, even if an exception occurs
 ```
 
-This replaces the manual pattern of calling `resolve_model_for_user()`, setting context
-vars, and resetting them in a `finally` block.
-
 ---
 
 ## API endpoints
-
-All endpoints are namespaced under `agentic/`. When you include the URLs with
-`path("api/", include("django_agentic.urls"))`, the full paths become `/api/agentic/...`.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -266,71 +260,6 @@ All endpoints are namespaced under `agentic/`. When you include the URLs with
 | POST | `agentic/agent/chat` | Send a chat message |
 | POST | `agentic/agent/resume` | Approve/reject HITL interrupt |
 | GET | `agentic/agent/history` | Load conversation history for an entity |
-
-### Request/Response formats
-
-**Chat:**
-
-```json
-POST /api/agentic/agent/chat
-{
-  "message": "What is the current price?",
-  "context": {"entity_class": "catalog.Product", "entity_id": "123"}
-}
-
-// Normal response
-{"success": true, "message": "The price is $29.99.", "usage": {"input_tokens": 150, "output_tokens": 25}}
-
-// HITL interrupt response
-{"success": true, "message": "Confirm 1 action", "usage": {...},
- "interrupt": {"message": "Confirm 1 action", "actions": [{"name": "update_price", "args": {"new_price": 39.99}, "description": "Update price to $39.99"}]}}
-```
-
-**Resume:**
-
-```json
-POST /api/agentic/agent/resume
-{"approved": true, "context": {"entity_class": "catalog.Product", "entity_id": "123"}}
-```
-
-**History:**
-
-```
-GET /api/agentic/agent/history?entity_class=catalog.Product&entity_id=123
-
-{"history": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}
-```
-
----
-
-## Checkpointer (chat history storage)
-
-Default: `InMemorySaver` (works out of the box, loses history on server restart).
-
-### PostgreSQL (production)
-
-```bash
-pip install django-agentic[postgres]
-```
-
-```python
-from langgraph.checkpoint.postgres import PostgresSaver
-DJANGO_AGENTIC = {
-    "CHECKPOINTER": PostgresSaver.from_conn_string("postgresql://user:pass@host/db"),
-}
-# Call DJANGO_AGENTIC["CHECKPOINTER"].setup() once to create checkpoint tables.
-```
-
-### Redis
-
-```bash
-pip install django-agentic[redis]
-```
-
-```python
-from langgraph.checkpoint.redis import RedisSaver
-DJANGO_AGENTIC = {"CHECKPOINTER": RedisSaver(redis_url="redis://localhost:6379")}
-```
 
 ---
 
@@ -343,6 +272,7 @@ credits get the paid-tier model.
 - Admins see unlimited credits (staff bypass)
 - Per-user model override in admin
 - Atomic credit deduction with idempotency keys (no double-charging on retries)
+- Non-token models (Whisper) use `explicit_cost_usd` for duration-based billing
 
 ```bash
 python manage.py reset_free_credits  # run monthly via cron
@@ -350,23 +280,35 @@ python manage.py reset_free_credits  # run monthly via cron
 
 ---
 
-## Prompt caching (Anthropic)
+## Checkpointer (chat history storage)
 
-When using an Anthropic model, `AnthropicPromptCachingMiddleware` automatically caches
-the system prompt. On repeated requests within 5 minutes, cache hits cost ~90% less than
-regular input tokens. No configuration needed -- the middleware is applied automatically.
+Default: `InMemorySaver` (works out of the box, loses history on server restart).
+
+### PostgreSQL (production)
+
+```python
+from langgraph.checkpoint.postgres import PostgresSaver
+DJANGO_AGENTIC = {
+    "CHECKPOINTER": PostgresSaver.from_conn_string("postgresql://user:pass@host/db"),
+}
+```
+
+### Redis
+
+```python
+from langgraph.checkpoint.redis import RedisSaver
+DJANGO_AGENTIC = {"CHECKPOINTER": RedisSaver(redis_url="redis://localhost:6379")}
+```
 
 ---
 
 ## Configuration reference
 
-All settings go in the `DJANGO_AGENTIC` dict in your Django settings:
-
 | Key | Default | Description |
 |-----|---------|-------------|
 | `DEFAULT_MODEL` | `claude-sonnet-4-20250514` | Fallback LLM model name |
 | `ANTHROPIC_API_KEY` | `""` | Anthropic API key |
-| `OPENAI_API_KEY` | `""` | OpenAI API key |
+| `OPENAI_API_KEY` | `""` | OpenAI API key (also used for Whisper) |
 | `MAX_RETRIES` | `8` | LLM retry count |
 | `REQUESTS_PER_SECOND` | `0.8` | Rate limiter for LLM calls |
 | `CHECKPOINTER` | `InMemorySaver()` | LangGraph checkpointer instance |
@@ -385,10 +327,11 @@ All settings go in the `DJANGO_AGENTIC` dict in your Django settings:
 
 **Optional:**
 
-- `langchain-anthropic` -- for Anthropic models + prompt caching middleware
-- `langchain-openai` -- for OpenAI models
-- `langgraph-checkpoint-postgres` -- PostgreSQL checkpointer
-- `langgraph-checkpoint-redis` -- Redis checkpointer
+- `langchain-anthropic` — Anthropic models + prompt caching
+- `langchain-openai` — OpenAI models
+- `openai` — Whisper transcription
+- `langgraph-checkpoint-postgres` — PostgreSQL checkpointer
+- `langgraph-checkpoint-redis` — Redis checkpointer
 
 ---
 
