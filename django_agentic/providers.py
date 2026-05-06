@@ -177,3 +177,28 @@ def _openai_transcription_factory(api_key: str):
 
 
 register_transcription_provider("openai", _openai_transcription_factory)
+
+
+# ── Prompt caching capability registry ──────────────────────────────
+# Providers that support content-block-level prompt caching.
+# Add a provider name here when it gains cache_control support.
+# The consuming app never needs to know — service.py reads this set.
+
+_CONTENT_CACHING_PROVIDERS: set[str] = {"anthropic"}
+
+
+def register_content_caching_provider(name: str) -> None:
+    """Declare that a provider supports cache_control content blocks.
+
+    Call this in AppConfig.ready() when registering a new provider
+    that supports prompt caching (e.g. Google Gemini when it ships it).
+
+    Example:
+        register_content_caching_provider("google")
+    """
+    _CONTENT_CACHING_PROVIDERS.add(name.lower())
+
+
+def supports_content_caching(provider: str) -> bool:
+    """Return True if this provider supports cache_control content blocks."""
+    return provider.lower() in _CONTENT_CACHING_PROVIDERS

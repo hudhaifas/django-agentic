@@ -122,6 +122,38 @@ def _extract_usage(raw_msg: BaseMessage | None) -> dict:
 
 # ── AIService ─────────────────────────────────────────────────────────
 
+
+
+# ── Prompt caching helper ─────────────────────────────────────────────────────
+
+def _build_cached_system_message(
+    static_text: str,
+    dynamic_text: str = "",
+    model_name: str = "",
+) -> "SystemMessage":
+    """Build a SystemMessage, marking the static block as cacheable when the
+    resolved provider supports content caching (e.g. Anthropic).
+
+    Mirrors the silverstripe-ai / DataObjectAgent pattern:
+      - static_text  → cache_control: ephemeral  (rules, tools, format — rarely changes)
+      - dynamic_text → no cache_control           (entity context, date — changes per request)
+
+    Provider capability lives in providers._CONTENT_CACHING_PROVIDERS.
+    Adding a new provider = one line there. Nothing changes here.
+    The consuming app never touches cache_control (Tenet 9).
+    """
+    from .providers import resolve_provider, supports_content_caching
+
+    parts = [{"type": "text", "text": t} for t in [static_text, dynamic_text] if t]
+
+    if model_name and supports_content_caching(resolve_provider(model_name)):
+        parts[0]["cache_control"] = {"type": "ephemeral"}
+        return SystemMessage(content=parts)
+
+    return SystemMessage(content="\n\n".join(t for t in [static_text, dynamic_text] if t))
+
+
+
 class AIService:
 
     def resolve_model_name(self, node: str | None = None) -> str:
@@ -146,12 +178,12 @@ class AIService:
                related_object_id: str | None = None, input_summary: str = "",
                model_name: str | None = None, idempotency_key: str | None = None) -> BaseModel:
         """Single structured LLM call with automatic usage logging and credit deduction."""
-        from .chat import build_system_message
+        from .providers import resolve_provider
 
         resolved_name = model_name or self.resolve_model_name(node)
         user = current_ai_user.get()
         chat_model = create_chat_model(resolved_name)
-        system_msg = SystemMessage(content=build_system_message(system_prompt, dynamic_context))
+        system_msg = _build_cached_system_message(system_prompt, dynamic_context, resolved_name)
         structured = chat_model.with_structured_output(schema, include_raw=True)
 
         request_time = timezone.now()

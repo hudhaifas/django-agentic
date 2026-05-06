@@ -147,3 +147,62 @@ class ExtractChatHistoryTest(TestCase):
         ]
         history = _extract_chat_history(messages)
         self.assertEqual(len(history), 0)
+
+
+class BuildCachedSystemMessageTest(TestCase):
+    """_build_cached_system_message must emit cache_control blocks for
+    Anthropic and plain strings for everything else."""
+
+    def setUp(self):
+        AIModel.objects.create(
+            name="claude-test", provider="anthropic",
+            input_cost_per_1m="3.00", output_cost_per_1m="15.00",
+        )
+        AIModel.objects.create(
+            name="gpt-test", provider="openai",
+            input_cost_per_1m="0.10", output_cost_per_1m="0.40",
+        )
+
+    def _call(self, static, dynamic="", model="claude-test"):
+        from django_agentic.service import _build_cached_system_message
+        return _build_cached_system_message(static, dynamic, model)
+
+    def test_anthropic_static_only_is_cached_block(self):
+        msg = self._call("static instructions")
+        self.assertIsInstance(msg.content, list)
+        self.assertEqual(len(msg.content), 1)
+        self.assertEqual(msg.content[0]["text"], "static instructions")
+        self.assertEqual(msg.content[0]["cache_control"], {"type": "ephemeral"})
+
+    def test_anthropic_static_and_dynamic_two_blocks(self):
+        msg = self._call("static", "dynamic context")
+        self.assertIsInstance(msg.content, list)
+        self.assertEqual(len(msg.content), 2)
+        self.assertEqual(msg.content[0]["cache_control"], {"type": "ephemeral"})
+        self.assertNotIn("cache_control", msg.content[1])
+        self.assertEqual(msg.content[1]["text"], "dynamic context")
+
+    def test_only_static_block_is_marked_cached(self):
+        msg = self._call("static", "dynamic")
+        self.assertIn("cache_control", msg.content[0])
+        self.assertNotIn("cache_control", msg.content[1])
+
+    def test_openai_returns_plain_string(self):
+        msg = self._call("static", "dynamic", model="gpt-test")
+        self.assertIsInstance(msg.content, str)
+        self.assertIn("static", msg.content)
+        self.assertIn("dynamic", msg.content)
+
+    def test_openai_static_only_plain_string(self):
+        msg = self._call("static only", model="gpt-test")
+        self.assertIsInstance(msg.content, str)
+        self.assertEqual(msg.content, "static only")
+
+    def test_empty_dynamic_not_appended(self):
+        msg = self._call("static", dynamic="")
+        self.assertEqual(len(msg.content), 1)
+
+    def test_no_model_name_falls_back_to_plain_string(self):
+        from django_agentic.service import _build_cached_system_message
+        msg = _build_cached_system_message("static", "dynamic", model_name="")
+        self.assertIsInstance(msg.content, str)
