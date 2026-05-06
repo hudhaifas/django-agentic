@@ -1,5 +1,5 @@
 /**
- * Generic agent chat widget for django_ai.
+ * Generic agent chat widget for django_agentic.
  *
  * Copy this file into your frontend and customize as needed.
  * Requires: react, antd, react-markdown, and the agent.ts API client.

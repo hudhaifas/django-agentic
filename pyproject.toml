@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "django-agentic"
-version = "0.4.0"
+version = "0.5.0"
 description = "AI framework for Django — LangGraph + LangChain. Entity-aware agents, credit management, usage logging, prompt caching, HITL."
 readme = "README.md"
 license = "MIT"

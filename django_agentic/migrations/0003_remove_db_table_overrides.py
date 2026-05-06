@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('django_ai', '0002_add_model_type'),
+        ('django_agentic', '0002_add_model_type'),
     ]
 
     operations = [

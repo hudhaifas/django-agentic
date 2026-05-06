@@ -46,8 +46,8 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('monthly_free_credits', models.DecimalField(decimal_places=2, default=Decimal('2.00'), max_digits=10)),
                 ('step_model_config', models.JSONField(blank=True, default=dict)),
-                ('default_free_model', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='django_ai.aimodel')),
-                ('default_paid_model', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='django_ai.aimodel')),
+                ('default_free_model', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='django_agentic.aimodel')),
+                ('default_paid_model', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='django_agentic.aimodel')),
             ],
             options={
                 'verbose_name': 'AI Configuration',
@@ -64,7 +64,7 @@ class Migration(migrations.Migration):
                 ('credits_reset_at', models.DateTimeField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('model_override', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='django_ai.aimodel')),
+                ('model_override', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to='django_agentic.aimodel')),
                 ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='ai_profile', to=settings.AUTH_USER_MODEL)),
             ],
             options={
@@ -103,7 +103,7 @@ class Migration(migrations.Migration):
                 ('success', models.BooleanField(default=True)),
                 ('error', models.TextField(blank=True, default='')),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('ai_model', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='usage_logs', to='django_ai.aimodel')),
+                ('ai_model', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='usage_logs', to='django_agentic.aimodel')),
                 ('entity_type', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='contenttypes.contenttype')),
                 ('user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='ai_usage_logs', to=settings.AUTH_USER_MODEL)),
             ],

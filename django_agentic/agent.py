@@ -2,7 +2,7 @@
 
 Mirrors silverstripe-ai's DataObjectAgent. Consuming app subclasses this
 and implements get_static_instructions(), get_dynamic_context(), get_tools().
-django_ai handles provider, prompt caching, chat history, logging, credits, HITL.
+django_agentic handles provider, prompt caching, chat history, logging, credits, HITL.
 
 Usage:
     from django_agentic.agent import ModelAgent

@@ -1,5 +1,5 @@
 /**
- * Minimal axios client for django_ai API.
+ * Minimal axios client for django_agentic API.
  *
  * Copy this into your frontend and adjust the baseURL and CSRF
  * configuration to match your project setup.

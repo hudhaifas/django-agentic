@@ -49,7 +49,7 @@ class AIModelTest(TestCase):
         self.assertEqual(cost, Decimal("18"))
 
     def test_table_name(self):
-        self.assertTrue(AIModel._meta.db_table.startswith("django_ai_"))
+        self.assertTrue(AIModel._meta.db_table.startswith("django_agentic_"))
 
 
 class SiteAIConfigTest(TestCase):
@@ -66,7 +66,7 @@ class SiteAIConfigTest(TestCase):
         self.assertEqual(c.pk, 1)
 
     def test_table_name(self):
-        self.assertTrue(SiteAIConfig._meta.db_table.startswith("django_ai_"))
+        self.assertTrue(SiteAIConfig._meta.db_table.startswith("django_agentic_"))
 
 
 class UserAIProfileTest(TestCase):

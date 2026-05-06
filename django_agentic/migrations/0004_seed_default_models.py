@@ -22,8 +22,8 @@ PAID_MODEL = "claude-sonnet-4-20250514"
 
 
 def seed(apps, schema_editor):
-    AIModel = apps.get_model("django_ai", "AIModel")
-    SiteAIConfig = apps.get_model("django_ai", "SiteAIConfig")
+    AIModel = apps.get_model("django_agentic", "AIModel")
+    SiteAIConfig = apps.get_model("django_agentic", "SiteAIConfig")
 
     for name, display, provider, inp, out, cw, cr, ctx, max_out, free in MODELS:
         AIModel.objects.update_or_create(name=name, defaults={
@@ -50,7 +50,7 @@ def reverse(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("django_ai", "0003_remove_db_table_overrides"),
+        ("django_agentic", "0003_remove_db_table_overrides"),
     ]
     operations = [
         migrations.RunPython(seed, reverse),
